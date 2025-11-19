@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>周报录入 - 酒馆日记本</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+  <!-- 头部 -->
+  <header>
+    <div class="container header-container">
+      <div class="logo">
+        <img src="https://p9-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/89f6c3e198e74f92bd9a6f91d160c095~tplv-a9rns2rl98-image.image?rcl=20251119153032BAB44547C5AFCF1EC8F0&rk3s=8e244e95&rrcfp=f06b921b&x-expires=1766129500&x-signature=em6nJXfzyAYbgJflDuswwDqjIyk%3D" alt="Logo" height="40">
+        <h1>酒馆日记本</h1>
+      </div>
+      <div class="user-info">
+        <span id="userName">欢迎，用户</span>
+        <button id="logoutBtn" class="btn btn-sm btn-accent">退出登录</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 导航 -->
+  <nav>
+    <div class="container nav-container">
+      <div class="nav-item">
+        <a href="dashboard.html" class="nav-link">首页</a>
+      </div>
+      <div class="nav-item">
+        <a href="report-form.html" class="nav-link active">报告录入</a>
+      </div>
+      <div class="nav-item">
+        <a href="report-query.html" class="nav-link">周报查询</a>
+      </div>
+      <div class="nav-item" id="configNavItem">
+        <a href="#" class="nav-link dropdown-toggle">配置管理</a>
+        <div class="dropdown-menu">
+          <a href="config.html?type=domains" class="dropdown-item">域控配置</a>
+          <a href="config.html?type=brands" class="dropdown-item">品牌配置</a>
+          <a href="config.html?type=models" class="dropdown-item">车型配置</a>
+          <a href="config.html?type=baselines" class="dropdown-item">基线配置</a>
+          <a href="config.html?type=businessModules" class="dropdown-item">业务模块配置</a>
+        </div>
+      </div>
+      <div class="nav-item" id="userManagementNavItem">
+        <a href="user-management.html" class="nav-link">用户管理</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 主内容区 -->
+  <main class="container main-content">
+    <h2 class="page-title">报告录入</h2>
+
+    <!-- 自动保存提示 -->
+    <div id="autosaveIndicator" class="autosave-indicator">
+      <div class="loader"></div>
+      <span>自动保存中...</span>
+    </div>
+
+    <!-- 提示消息 -->
+    <div id="alertMessage" class="alert" style="display: none;"></div>
+
+    <!-- 周报表单 -->
+    <div class="report-form-container">
+      <form id="reportForm">
+        <input type="hidden" id="reportId">
+        
+        <!-- 项目属性选择区 -->
+        <div class="form-row">
+          <div class="form-col">
+            <div class="form-group">
+              <label for="domainId" class="form-label">域控 <span class="text-danger">*</span></label>
+              <select id="domainId" class="form-select" required>
+                <option value="">请选择域控</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-col">
+            <div class="form-group">
+              <label for="brandId" class="form-label">品牌 <span class="text-danger">*</span></label>
+              <select id="brandId" class="form-select" required>
+                <option value="">请选择品牌</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-col">
+            <div class="form-group">
+              <label for="modelId" class="form-label">车型 <span class="text-danger">*</span></label>
+              <select id="modelId" class="form-select" required>
+                <option value="">请选择车型</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-col">
+            <div class="form-group">
+              <label for="baselineId" class="form-label">基线 <span class="text-danger">*</span></label>
+              <select id="baselineId" class="form-select" required>
+                <option value="">请选择基线</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 日期选择区 -->
+        <div class="form-row">
+          <div class="form-col">
+            <div class="form-group">
+              <label for="reportDate" class="form-label">报告日期 <span class="text-danger">*</span></label>
+              <input type="date" id="reportDate" class="form-control" required>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 业务模块选择及内容填写区 -->
+        <div class="form-group">
+          <label class="form-label">业务模块</label>
+          <div id="modulesContainer">
+            <!-- 业务模块将通过JavaScript动态生成 -->
+          </div>
+        </div>
+        
+        <!-- 提交按钮 -->
+        <div class="form-group" style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button type="button" id="saveDraftBtn" class="btn btn-secondary">保存草稿</button>
+          <button type="submit" id="submitReportBtn" class="btn btn-primary">提交报告</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+
+
+  <script src="js/auth.js"></script>
+  <script src="js/report-form.js"></script>
+</body>
+</html>
