@@ -67,36 +67,45 @@ db.serialize(() => {
   });
 
   // 检查并添加updatedAt列（如果不存在）
-  db.run(`PRAGMA table_info(config)`, (err, columns) => {
+  db.all(`PRAGMA table_info(config)`, (err, columns) => {
     if (err) {
       console.error('获取配置表结构失败:', err.message);
       return;
     }
-    const hasUpdatedAt = columns.some(col => col.name === 'updatedAt');
+    const hasUpdatedAt = (columns || []).some(col => col.name === 'updatedAt');
+    
+    // 从config.json文件导入配置到数据库的函数
+    const importConfig = () => {
+      const configPath = path.join(DATA_DIR, 'config.json');
+      if (fs.existsSync(configPath)) {
+        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const stmt = db.prepare('INSERT OR REPLACE INTO config (key, value, updatedAt) VALUES (?, ?, ?)');
+        const updatedAt = new Date().toISOString();
+        
+        for (const [key, value] of Object.entries(configData)) {
+          stmt.run([key, JSON.stringify(value), updatedAt], (err) => {
+            if (err) console.error(`导入配置 ${key} 失败:`, err.message);
+          });
+        }
+        
+        stmt.finalize(() => {
+          console.log('配置已从文件导入数据库');
+        });
+      }
+    };
+
     if (!hasUpdatedAt) {
       db.run(`ALTER TABLE config ADD COLUMN updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`, (err) => {
-        if (err) console.error('添加updatedAt列失败:', err.message);
+        if (err) {
+          console.error('添加updatedAt列失败:', err.message);
+          return;
+        }
+        importConfig();
       });
+    } else {
+      importConfig();
     }
   });
-
-  // 从config.json文件导入配置到数据库
-  const configPath = path.join(DATA_DIR, 'config.json');
-  if (fs.existsSync(configPath)) {
-    const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const stmt = db.prepare('INSERT OR REPLACE INTO config (key, value, updatedAt) VALUES (?, ?, ?)');
-    const updatedAt = new Date().toISOString();
-    
-    for (const [key, value] of Object.entries(configData)) {
-      stmt.run([key, JSON.stringify(value), updatedAt], (err) => {
-        if (err) console.error(`导入配置 ${key} 失败:`, err.message);
-      });
-    }
-    
-    stmt.finalize(() => {
-      console.log('配置已从文件导入数据库');
-    });
-  }
 });
 
 // 启用CORS
