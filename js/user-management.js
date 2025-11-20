@@ -8,23 +8,23 @@ let users = [];
 let currentUser = null;
 
 // 页面加载完成后执行
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   // 检查用户是否已登录且具有管理员权限
   if (!checkPermission('admin')) {
     return;
   }
   
   // 初始化页面
-  initUserManagementPage();
+  await initUserManagementPage();
 });
 
 // 初始化用户管理页面
-function initUserManagementPage() {
+async function initUserManagementPage() {
   // 显示当前登录用户信息
   displayCurrentUserInfo();
   
   // 加载用户数据
-  loadUserData();
+  await loadUserData();
   
   // 渲染用户表格
   renderUserTable();
@@ -42,9 +42,15 @@ function displayCurrentUserInfo() {
 }
 
 // 加载用户数据
-function loadUserData() {
-  const userData = JSON.parse(localStorage.getItem('users')) || [];
-  users = userData;
+async function loadUserData() {
+  try {
+    // 使用localStorage存储用户数据（替代Firebase）
+    const mockUsers = JSON.parse(localStorage.getItem('mockUsers')) || [];
+    users = mockUsers;
+  } catch (error) {
+    console.error('加载用户数据失败:', error);
+    users = [];
+  }
 }
 
 // 渲染用户表格
@@ -137,6 +143,17 @@ function setupEventListeners() {
   // 保存按钮事件
   document.getElementById('saveBtn').addEventListener('click', function() {
     saveUser();
+  });
+  
+  // 密码查看按钮事件
+  document.getElementById('toggleModalPassword').addEventListener('click', function() {
+    const passwordInput = document.getElementById('password');
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+    passwordInput.setAttribute('type', type);
+    // 切换图标
+    const icon = this.querySelector('i');
+    icon.classList.toggle('fa-eye');
+    icon.classList.toggle('fa-eye-slash');
   });
   
   // 关闭删除模态框按钮事件
@@ -405,9 +422,14 @@ function saveUser() {
   }
 }
 
-// 保存用户数据
-function saveUserData() {
-  localStorage.setItem('users', JSON.stringify(users));
+async function saveUserData() {
+  try {
+    // 使用localStorage存储用户数据（替代Firebase）
+    localStorage.setItem('mockUsers', JSON.stringify(users));
+    console.log('用户数据保存到localStorage完成');
+  } catch (error) {
+    console.error('保存用户数据失败:', error);
+  }
 }
 
 // 关闭模态框

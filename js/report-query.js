@@ -20,18 +20,18 @@ let currentPage = 1;
 const pageSize = 10;
 
 // 页面加载完成后执行
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   // 检查用户是否已登录
   if (!checkLogin()) {
     return;
   }
   
   // 初始化页面
-  initReportQueryPage();
+  await initReportQueryPage();
 });
 
 // 初始化周报查询页面
-function initReportQueryPage() {
+async function initReportQueryPage() {
   // 显示用户信息
   displayUserInfo();
   
@@ -39,13 +39,13 @@ function initReportQueryPage() {
   setupNavigationPermissions();
   
   // 加载配置数据
-  loadConfigData();
+  await loadConfigData();
   
   // 加载用户数据
-  loadUserData();
+  await loadUserData();
   
   // 加载周报数据
-  loadReportData();
+  await loadReportData();
   
   // 填充查询条件下拉框
   populateQuerySelects();
@@ -72,39 +72,55 @@ function setupNavigationPermissions() {
 }
 
 // 加载配置数据
-function loadConfigData() {
-  const configData = JSON.parse(localStorage.getItem('config')) || {};
-  
-  config.domains = configData.domains || [];
-  config.brands = configData.brands || [];
-  config.models = configData.models || [];
-  config.baselines = configData.baselines || [];
-  config.businessModules = configData.businessModules || [];
+async function loadConfigData() {
+  try {
+    const configData = JSON.parse(localStorage.getItem('config')) || {};
+    config = {
+      domains: configData.domains || [],
+      brands: configData.brands || [],
+      models: configData.models || [],
+      baselines: configData.baselines || [],
+      businessModules: configData.businessModules || []
+    };
+  } catch (error) {
+    console.error('加载配置数据失败:', error);
+  }
 }
 
 // 加载用户数据
-function loadUserData() {
-  const userData = JSON.parse(localStorage.getItem('users')) || [];
-  users = userData;
+async function loadUserData() {
+  try {
+    users = JSON.parse(localStorage.getItem('mockUsers')) || [];
+  } catch (error) {
+    console.error('加载用户数据失败:', error);
+    users = [];
+  }
 }
 
 // 加载周报数据
-function loadReportData() {
-  const reportData = JSON.parse(localStorage.getItem('reports')) || [];
+async function loadReportData() {
+  try {
+    let reportData = JSON.parse(localStorage.getItem('reports')) || [];
+    
+    // 如果不是管理员，只显示当前用户的周报
+    const currentUser = getCurrentUser();
+    if (!isAdmin()) {
+      reports = reportData.filter(report => report.userId === currentUser.id);
+    } else {
+      reports = reportData;
+    }
   
-  // 如果不是管理员，只显示当前用户的周报
-  const currentUser = getCurrentUser();
-  if (!isAdmin()) {
-    reports = reportData.filter(report => report.userId === currentUser.id);
-  } else {
-    reports = reportData;
+    // 按更新时间排序，最近的在前
+    reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  
+    // 初始化筛选后的报告
+    filteredReports = [...reports];
+  } catch (error) {
+    console.error('加载周报数据失败:', error);
+    // 初始化默认值
+    reports = [];
+    filteredReports = [];
   }
-  
-  // 按更新时间排序，最近的在前
-  reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-  
-  // 初始化筛选后的报告
-  filteredReports = [...reports];
 }
 
 // 填充查询条件下拉框

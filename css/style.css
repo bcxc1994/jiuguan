@@ -201,6 +201,39 @@ nav {
   transition: border-color 0.3s;
 }
 
+/* 密码输入框查看按钮样式 */
+.input-group {
+  position: relative;
+}
+
+.input-group-append {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.input-group-append .btn {
+  border: none;
+  background-color: transparent;
+  padding: 0.75rem 1rem;
+  color: var(--text-light);
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.input-group-append .btn:hover {
+  color: var(--text-color);
+  background-color: transparent;
+}
+
+/* 调整有图标的密码输入框的内边距 */
+.input-group .form-control {
+  padding-right: 4.5rem;
+}
+
 /* 模态框样式 */
 .modal {
   display: none;
