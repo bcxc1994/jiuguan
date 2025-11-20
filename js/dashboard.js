@@ -31,6 +31,53 @@ function initDashboard() {
   // 设置退出登录事件
   document.getElementById('logoutBtn').addEventListener('click', logout);
   
+  // 设置上传到云端按钮事件
+  const syncToCloudBtn = document.getElementById('syncToCloudBtn');
+  if (syncToCloudBtn) {
+    syncToCloudBtn.addEventListener('click', async () => {
+      syncToCloudBtn.disabled = true;
+      syncToCloudBtn.textContent = '上传中...';
+      
+      try {
+        const result = await window.syncToCloud();
+        alert('数据上传成功！已上传 ' + result.total + ' 条记录');
+      } catch (error) {
+        console.error('数据上传失败:', error);
+        alert('数据上传失败，请稍后重试');
+      } finally {
+        syncToCloudBtn.disabled = false;
+        syncToCloudBtn.textContent = '上传到云端';
+      }
+    });
+  } else {
+    console.error('syncToCloudBtn not found');
+  }
+  
+  // 设置从云端下载按钮事件
+  const syncFromCloudBtn = document.getElementById('syncFromCloudBtn');
+  if (syncFromCloudBtn) {
+    syncFromCloudBtn.addEventListener('click', async () => {
+      syncFromCloudBtn.disabled = true;
+      syncFromCloudBtn.textContent = '下载中...';
+      
+      try {
+        await window.syncFromCloud();
+        alert('数据下载成功！已从云端获取最新数据');
+        // 刷新仪表盘数据
+        loadStatistics();
+        loadRecentReports();
+      } catch (error) {
+        console.error('数据下载失败:', error);
+        alert('数据下载失败，请稍后重试');
+      } finally {
+        syncFromCloudBtn.disabled = false;
+        syncFromCloudBtn.textContent = '从云端下载';
+      }
+    });
+  } else {
+    console.error('syncFromCloudBtn not found');
+  }
+  
   // 设置下拉菜单事件
   setupDropdownMenus();
 }

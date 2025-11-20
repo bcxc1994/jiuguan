@@ -1,1 +1,13 @@
-{}
+{
+  "reportDeadline": "Sunday 23:59",
+  "reminderEnabled": true,
+  "reminderTime": "Sunday 18:00",
+  "emailNotificationEnabled": false,
+  "defaultReportStatus": "draft",
+  "maxReportLength": 10000,
+  "systemName": "自动周报系统",
+  "version": "1.0.0",
+  "adminEmail": "admin@example.com",
+  "autoBackupEnabled": true,
+  "backupTime": "02:00"
+}
