@@ -55,29 +55,25 @@ function setupNavigationPermissions() {
 // 加载统计数据
 async function loadStatistics() {
   try {
-    // 获取当前用户
+    // 尝试从API获取数据
+    const [reports, users] = await Promise.all([
+      window.ReportAPI.getAllReports(),
+      window.UserAPI.getAllUsers()
+    ]);
+    
+    // 处理数据并更新UI
     const currentUser = getCurrentUser();
-    
-    // 获取所有周报（从localStorage）
-    const reports = JSON.parse(localStorage.getItem('reports')) || [];
-    
-    // 获取所有用户（从localStorage）
-    const users = JSON.parse(localStorage.getItem('mockUsers')) || [];
-    
-    // 计算总周报数
     document.getElementById('totalReports').textContent = reports.length;
     
-    // 计算活跃用户数（过去30天内有提交周报的用户）
-    const activeUserIds = new Set();
+    // 计算活跃用户数
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
+    const activeUserIds = new Set();
     reports.forEach(report => {
       if (new Date(report.createdAt) >= thirtyDaysAgo) {
         activeUserIds.add(report.userId);
       }
     });
-    
     document.getElementById('activeUsers').textContent = activeUserIds.size;
     
     // 计算我的周报数
@@ -88,92 +84,198 @@ async function loadStatistics() {
     const draftReports = reports.filter(report => report.status === 'draft');
     document.getElementById('draftReports').textContent = draftReports.length;
   } catch (error) {
-    console.error('加载统计数据失败:', error);
+    console.error('API获取统计数据失败，使用localStorage回退:', error);
+    // 从localStorage获取数据作为回退
+    const currentUser = getCurrentUser();
+    const reports = JSON.parse(localStorage.getItem('reports')) || [];
+    const users = JSON.parse(localStorage.getItem('mockUsers')) || [];
+    
+    document.getElementById('totalReports').textContent = reports.length;
+    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const activeUserIds = new Set();
+    reports.forEach(report => {
+      if (new Date(report.createdAt) >= thirtyDaysAgo) {
+        activeUserIds.add(report.userId);
+      }
+    });
+    document.getElementById('activeUsers').textContent = activeUserIds.size;
+    
+    const myReports = reports.filter(report => report.userId === currentUser.id);
+    document.getElementById('myReports').textContent = myReports.length;
+    
+    const draftReports = reports.filter(report => report.status === 'draft');
+    document.getElementById('draftReports').textContent = draftReports.length;
   }
 }
 
 // 加载最近编辑的周报
-function loadRecentReports() {
-  // 获取所有周报
-  let reports = JSON.parse(localStorage.getItem('reports')) || [];
-  
-  // 获取当前用户
-  const currentUser = getCurrentUser();
-  
-  // 如果不是管理员，只显示当前用户的周报
-  if (!isAdmin()) {
-    reports = reports.filter(report => report.userId === currentUser.id);
-  }
-  
-  // 按更新时间排序，最近的在前
-  reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-  
-  // 只显示最近的5条
-  const recentReports = reports.slice(0, 5);
-  
-  // 获取配置数据
-  const config = JSON.parse(localStorage.getItem('config')) || {};
-  const domains = config.domains || [];
-  const brands = config.brands || [];
-  const models = config.models || [];
-  const baselines = config.baselines || [];
-  
-  // 获取表格tbody
-  const tableBody = document.getElementById('recentReportsTable');
-  
-  // 清空表格
-  tableBody.innerHTML = '';
-  
-  // 如果没有数据，显示提示
-  if (recentReports.length === 0) {
-    const row = document.createElement('tr');
-    row.innerHTML = '<td colspan="7" class="text-center">暂无数据</td>';
-    tableBody.appendChild(row);
-    return;
-  }
-  
-  // 填充表格数据
-  recentReports.forEach(report => {
-    // 获取域控名称
-    const domain = domains.find(d => d.id === report.domainId);
-    const domainName = domain ? domain.name : '未知';
+async function loadRecentReports() {
+  try {
+    // 尝试从API获取数据
+    const [reports, config] = await Promise.all([
+      window.ReportAPI.getAllReports(),
+      window.ConfigAPI.getConfig()
+    ]);
     
-    // 获取品牌名称
-    const brand = brands.find(b => b.id === report.brandId);
-    const brandName = brand ? brand.name : '未知';
+    // 处理数据并更新UI
+    const currentUser = getCurrentUser();
+    let filteredReports = [...reports];
     
-    // 获取车型名称
-    const model = models.find(m => m.id === report.modelId);
-    const modelName = model ? model.name : '未知';
-    
-    // 获取基线名称
-    const baseline = baselines.find(b => b.id === report.baselineId);
-    const baselineName = baseline ? baseline.name : '未知';
-    
-    // 获取状态标签
-    let statusBadge = '';
-    if (report.status === 'draft') {
-      statusBadge = '<span class="badge badge-warning">草稿</span>';
-    } else if (report.status === 'submitted') {
-      statusBadge = '<span class="badge badge-success">已提交</span>';
+    // 如果不是管理员，只显示当前用户的周报
+    if (!isAdmin()) {
+      filteredReports = filteredReports.filter(report => report.userId === currentUser.id);
     }
     
-    // 创建表格行
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${formatDate(report.startDate)} - ${formatDate(report.endDate)}</td>
-      <td>${domainName}</td>
-      <td>${brandName}</td>
-      <td>${modelName}</td>
-      <td>${baselineName}</td>
-      <td>${statusBadge}</td>
-      <td>
-        <a href="report-form.html?id=${report.id}" class="btn btn-sm btn-primary">编辑</a>
-      </td>
-    `;
+    // 按更新时间排序，最近的在前
+    filteredReports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     
-    tableBody.appendChild(row);
-  });
+    // 只显示最近的5条
+    const recentReports = filteredReports.slice(0, 5);
+    
+    const domains = config.domains || [];
+    const brands = config.brands || [];
+    const models = config.models || [];
+    const baselines = config.baselines || [];
+    
+    // 获取表格tbody
+    const tableBody = document.getElementById('recentReportsTable');
+    
+    // 清空表格
+    tableBody.innerHTML = '';
+    
+    // 如果没有数据，显示提示
+    if (recentReports.length === 0) {
+      const row = document.createElement('tr');
+      row.innerHTML = '<td colspan="7" class="text-center">暂无数据</td>';
+      tableBody.appendChild(row);
+      return;
+    }
+    
+    // 填充表格数据
+    recentReports.forEach(report => {
+      // 获取域控名称
+      const domain = domains.find(d => d.id === report.domainId);
+      const domainName = domain ? domain.name : '未知';
+      
+      // 获取品牌名称
+      const brand = brands.find(b => b.id === report.brandId);
+      const brandName = brand ? brand.name : '未知';
+      
+      // 获取车型名称
+      const model = models.find(m => m.id === report.modelId);
+      const modelName = model ? model.name : '未知';
+      
+      // 获取基线名称
+      const baseline = baselines.find(b => b.id === report.baselineId);
+      const baselineName = baseline ? baseline.name : '未知';
+      
+      // 获取状态标签
+      let statusBadge = '';
+      if (report.status === 'draft') {
+        statusBadge = '<span class="badge badge-warning">草稿</span>';
+      } else if (report.status === 'submitted') {
+        statusBadge = '<span class="badge badge-success">已提交</span>';
+      }
+      
+      // 创建表格行
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${formatDate(report.startDate)} - ${formatDate(report.endDate)}</td>
+        <td>${domainName}</td>
+        <td>${brandName}</td>
+        <td>${modelName}</td>
+        <td>${baselineName}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <a href="report-form.html?id=${report.id}" class="btn btn-sm btn-primary">编辑</a>
+        </td>
+      `;
+      
+      tableBody.appendChild(row);
+    });
+  } catch (error) {
+    console.error('API获取最近周报失败，使用localStorage回退:', error);
+    // 从localStorage获取数据作为回退
+    let reports = JSON.parse(localStorage.getItem('reports')) || [];
+    const currentUser = getCurrentUser();
+    
+    // 如果不是管理员，只显示当前用户的周报
+    if (!isAdmin()) {
+      reports = reports.filter(report => report.userId === currentUser.id);
+    }
+    
+    // 按更新时间排序，最近的在前
+    reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    
+    // 只显示最近的5条
+    const recentReports = reports.slice(0, 5);
+    
+    // 获取配置数据
+    const config = JSON.parse(localStorage.getItem('config')) || {};
+    const domains = config.domains || [];
+    const brands = config.brands || [];
+    const models = config.models || [];
+    const baselines = config.baselines || [];
+    
+    // 获取表格tbody
+    const tableBody = document.getElementById('recentReportsTable');
+    
+    // 清空表格
+    tableBody.innerHTML = '';
+    
+    // 如果没有数据，显示提示
+    if (recentReports.length === 0) {
+      const row = document.createElement('tr');
+      row.innerHTML = '<td colspan="7" class="text-center">暂无数据</td>';
+      tableBody.appendChild(row);
+      return;
+    }
+    
+    // 填充表格数据
+    recentReports.forEach(report => {
+      // 获取域控名称
+      const domain = domains.find(d => d.id === report.domainId);
+      const domainName = domain ? domain.name : '未知';
+      
+      // 获取品牌名称
+      const brand = brands.find(b => b.id === report.brandId);
+      const brandName = brand ? brand.name : '未知';
+      
+      // 获取车型名称
+      const model = models.find(m => m.id === report.modelId);
+      const modelName = model ? model.name : '未知';
+      
+      // 获取基线名称
+      const baseline = baselines.find(b => b.id === report.baselineId);
+      const baselineName = baseline ? baseline.name : '未知';
+      
+      // 获取状态标签
+      let statusBadge = '';
+      if (report.status === 'draft') {
+        statusBadge = '<span class="badge badge-warning">草稿</span>';
+      } else if (report.status === 'submitted') {
+        statusBadge = '<span class="badge badge-success">已提交</span>';
+      }
+      
+      // 创建表格行
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${formatDate(report.startDate)} - ${formatDate(report.endDate)}</td>
+        <td>${domainName}</td>
+        <td>${brandName}</td>
+        <td>${modelName}</td>
+        <td>${baselineName}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <a href="report-form.html?id=${report.id}" class="btn btn-sm btn-primary">编辑</a>
+        </td>
+      `;
+      
+      tableBody.appendChild(row);
+    });
+  }
 }
 
 // 设置下拉菜单事件

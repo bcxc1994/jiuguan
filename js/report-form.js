@@ -384,9 +384,8 @@ function populateBaselineSelect(modelId) {
 // 加载报告数据
 async function loadReportData(reportId) {
   try {
-    // 从localStorage加载所有报告
-    const allReports = JSON.parse(localStorage.getItem('reports')) || [];
-    const report = allReports.find(r => r.id === reportId);
+    // 从API加载报告
+    const report = await window.ReportAPI.getReportById(reportId);
     
     if (!report) {
       showAlert('报告不存在或已被删除', 'danger');
@@ -409,10 +408,10 @@ async function loadReportData(reportId) {
     // 更新当前报告对象
     currentReport = {
       ...report,
-      content: report.content.map(item => ({
+      content: report.content ? report.content.map(item => ({
         moduleId: item.moduleId,
         workContent: item.workContent || ''
-      }))
+      })) : []
     };
     
     // 填充表单数据
@@ -432,8 +431,59 @@ async function loadReportData(reportId) {
     populateBaselineSelect(report.modelId);
     document.getElementById('baselineId').value = report.baselineId;
   } catch (error) {
-    console.error('加载报告数据失败:', error);
-    showAlert('加载报告数据失败，请重试', 'danger');
+    console.error('API加载报告数据失败，使用localStorage回退:', error);
+    try {
+      // 从localStorage加载所有报告
+      const allReports = JSON.parse(localStorage.getItem('reports')) || [];
+      const report = allReports.find(r => r.id === reportId);
+      
+      if (!report) {
+        showAlert('报告不存在或已被删除', 'danger');
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 2000);
+        return;
+      }
+      
+      // 检查报告所有者或管理员权限
+      const currentUser = getCurrentUser();
+      if (report.userId !== currentUser.id && !isAdmin()) {
+        showAlert('您没有权限编辑此报告', 'danger');
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 2000);
+        return;
+      }
+      
+      // 更新当前报告对象
+      currentReport = {
+        ...report,
+        content: report.content.map(item => ({
+          moduleId: item.moduleId,
+          workContent: item.workContent || ''
+        }))
+      };
+      
+      // 填充表单数据
+      document.getElementById('reportId').value = report.id;
+      document.getElementById('domainId').value = report.domainId;
+      document.getElementById('reportDate').value = report.startDate;
+      
+      // 填充品牌下拉框并选择对应品牌
+      populateBrandSelect(report.domainId);
+      document.getElementById('brandId').value = report.brandId;
+      
+      // 填充车型下拉框并选择对应车型
+      populateModelSelect(report.brandId);
+      document.getElementById('modelId').value = report.modelId;
+      
+      // 填充基线下拉框并选择对应基线
+      populateBaselineSelect(report.modelId);
+      document.getElementById('baselineId').value = report.baselineId;
+    } catch (localError) {
+      console.error('localStorage加载报告数据失败:', localError);
+      showAlert('加载报告数据失败，请重试', 'danger');
+    }
   }
 }
 
@@ -613,15 +663,16 @@ async function saveReport(status, isAutoSave = false) {
   currentReport.updatedAt = now;
   
   try {
-    // 保存到localStorage
-    const allReports = JSON.parse(localStorage.getItem('reports')) || [];
-    const reportIndex = allReports.findIndex(r => r.id === currentReport.id);
-    if (reportIndex !== -1) {
-      allReports[reportIndex] = currentReport;
+    // 保存到API
+    let savedReport;
+    if (currentReport.id) {
+      savedReport = await window.ReportAPI.updateReport(currentReport.id, currentReport);
     } else {
-      allReports.push(currentReport);
+      savedReport = await window.ReportAPI.createReport(currentReport);
     }
-    localStorage.setItem('reports', JSON.stringify(allReports));
+    
+    // 更新当前报告对象
+    currentReport = savedReport;
     
     // 隐藏自动保存提示
     showAutoSaveIndicator(false);
@@ -644,11 +695,45 @@ async function saveReport(status, isAutoSave = false) {
       }, 2000);
     }
   } catch (error) {
-    console.error('保存报告失败:', error);
-    showAlert('保存报告失败，请重试', 'danger');
-    showAutoSaveIndicator(false);
-    if (isAutoSave) {
-      isAutoSaving = false;
+    console.error('API保存报告失败，使用localStorage回退:', error);
+    try {
+      // 保存到localStorage
+      const allReports = JSON.parse(localStorage.getItem('reports')) || [];
+      const reportIndex = allReports.findIndex(r => r.id === currentReport.id);
+      if (reportIndex !== -1) {
+        allReports[reportIndex] = currentReport;
+      } else {
+        allReports.push(currentReport);
+      }
+      localStorage.setItem('reports', JSON.stringify(allReports));
+      
+      // 隐藏自动保存提示
+      showAutoSaveIndicator(false);
+      
+      // 如果是自动保存，重置标志
+      if (isAutoSave) {
+        isAutoSaving = false;
+        return;
+      }
+      
+      // 显示成功提示
+      if (status === 'draft') {
+        showAlert('草稿已保存到本地', 'success');
+      } else {
+        showAlert('报告已提交到本地', 'success');
+        
+        // 2秒后跳转到首页
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 2000);
+      }
+    } catch (localError) {
+      console.error('localStorage保存报告失败:', localError);
+      showAlert('保存报告失败，请重试', 'danger');
+      showAutoSaveIndicator(false);
+      if (isAutoSave) {
+        isAutoSaving = false;
+      }
     }
   }
 }
