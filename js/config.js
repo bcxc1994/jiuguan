@@ -34,13 +34,13 @@ const configTypes = {
     title: '品牌配置',
     fields: [
       { name: 'name', label: '名称', required: true, type: 'text' },
-      { name: 'domainId', label: '所属域控', required: true, type: 'select', options: [] },
+      { name: 'domainIds', label: '所属域控', required: true, type: 'multiselect', options: [] },
       { name: 'description', label: '描述', required: false, type: 'textarea' }
     ],
     tableColumns: [
       { key: 'id', label: 'ID' },
       { key: 'name', label: '名称' },
-      { key: 'domainName', label: '所属域控' },
+      { key: 'domainNames', label: '所属域控' },
       { key: 'description', label: '描述' },
       { key: 'actions', label: '操作' }
     ]
@@ -156,14 +156,18 @@ function displayUserInfo() {
 }
 
 // 加载配置数据
-function loadConfigData() {
-  const configData = JSON.parse(localStorage.getItem('config')) || {};
-  
-  config.domains = configData.domains || [];
-  config.brands = configData.brands || [];
-  config.models = configData.models || [];
-  config.baselines = configData.baselines || [];
-  config.businessModules = configData.businessModules || [];
+async function loadConfigData() {
+  try {
+    const configData = JSON.parse(localStorage.getItem('config')) || {};
+    
+    config.domains = configData.domains || [];
+    config.brands = configData.brands || [];
+    config.models = configData.models || [];
+    config.baselines = configData.baselines || [];
+    config.businessModules = configData.businessModules || [];
+  } catch (error) {
+    console.error('加载配置数据失败:', error);
+  }
 }
 
 // 渲染配置表格
@@ -787,7 +791,9 @@ function checkDependencies(item) {
   
   if (currentConfigType === 'domains') {
     // 检查品牌是否引用该域控
-    const dependentBrands = config.brands.filter(brand => brand.domainId === item.id);
+    const dependentBrands = config.brands.filter(brand => 
+      brand.domainIds && brand.domainIds.includes(item.id)
+    );
     if (dependentBrands.length > 0) {
       dependencies.push(`${dependentBrands.length}个品牌`);
     }
@@ -827,8 +833,12 @@ function checkDependencies(item) {
 }
 
 // 保存配置数据
-function saveConfigData() {
-  localStorage.setItem('config', JSON.stringify(config));
+async function saveConfigData() {
+  try {
+    localStorage.setItem('config', JSON.stringify(config));
+  } catch (error) {
+    console.error('保存配置数据失败:', error);
+  }
 }
 
 // 关闭模态框

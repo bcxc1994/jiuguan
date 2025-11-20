@@ -33,18 +33,24 @@ let autoSaveInterval = null;
 let isAutoSaving = false;
 
 // 页面加载完成后执行
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   // 检查用户是否已登录
   if (!checkLogin()) {
     return;
   }
   
   // 初始化页面
-  initReportForm();
+  await initReportForm();
+  
+  // 初始化自动清理功能
+  cleanupOldData();
+  
+  // 每天执行一次自动清理
+  setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
 });
 
 // 初始化周报录入页面
-function initReportForm() {
+async function initReportForm() {
   // 显示用户信息
   displayUserInfo();
   
@@ -52,7 +58,7 @@ function initReportForm() {
   setupNavigationPermissions();
   
   // 加载配置数据
-  loadConfigData();
+  await loadConfigData();
   
   // 检查是否有报告ID参数（编辑模式）
   const urlParams = new URLSearchParams(window.location.search);
@@ -60,7 +66,8 @@ function initReportForm() {
   
   if (reportId) {
     // 加载报告数据
-    loadReportData(reportId);
+    await loadReportData(reportId);
+    generateBusinessModules();
   } else {
     // 设置默认日期（当天）
     setDefaultDate();
@@ -95,17 +102,23 @@ function setupNavigationPermissions() {
 }
 
 // 加载配置数据
-function loadConfigData() {
-  const configData = JSON.parse(localStorage.getItem('config')) || {};
-  
-  config.domains = configData.domains || [];
-  config.brands = configData.brands || [];
-  config.models = configData.models || [];
-  config.baselines = configData.baselines || [];
-  config.businessModules = configData.businessModules || [];
-  
-  // 填充域控下拉框
-  populateDomainSelect();
+async function loadConfigData() {
+  try {
+    // 从localStorage加载配置数据
+    const configData = JSON.parse(localStorage.getItem('config')) || {};
+    
+    config.domains = configData.domains || [];
+    config.brands = configData.brands || [];
+    config.models = configData.models || [];
+    config.baselines = configData.baselines || [];
+    config.businessModules = configData.businessModules || [];
+    
+    // 填充域控下拉框
+    populateDomainSelect();
+  } catch (error) {
+    console.error('加载配置数据失败:', error);
+    showAlert('加载配置数据失败，请重试', 'danger');
+  }
 }
 
 // 填充域控下拉框
@@ -132,7 +145,7 @@ function populateBrandSelect(domainId) {
   brandSelect.innerHTML = '<option value="">请选择品牌</option>';
   
   // 筛选选中域控下的品牌
-  const filteredBrands = config.brands.filter(brand => brand.domainId === domainId);
+  const filteredBrands = config.brands.filter(brand => brand.domainIds && brand.domainIds.includes(domainId));
   
   // 添加品牌选项
   filteredBrands.forEach(brand => {
@@ -369,57 +382,60 @@ function populateBaselineSelect(modelId) {
 	}
 
 // 加载报告数据
-	function loadReportData(reportId) {
-	  const reports = JSON.parse(localStorage.getItem('reports')) || [];
-	  const report = reports.find(r => r.id === reportId);
-	  
-	  if (!report) {
-	    showAlert('报告不存在或已被删除', 'danger');
-	    setTimeout(() => {
-	      window.location.href = 'dashboard.html';
-	    }, 2000);
-	    return;
-	  }
-	  
-	  // 检查报告所有者或管理员权限
-	  const currentUser = getCurrentUser();
-	  if (report.userId !== currentUser.id && !isAdmin()) {
-	    showAlert('您没有权限编辑此报告', 'danger');
-	    setTimeout(() => {
-	      window.location.href = 'dashboard.html';
-	    }, 2000);
-	    return;
-	  }
-	  
-	  // 更新当前报告对象，确保没有多余字段
-	  currentReport = {
-	    ...report,
-	    content: report.content.map(item => ({
-	      moduleId: item.moduleId,
-	      workContent: item.workContent || ''
-	    }))
-	  };
-	  
-	  // 填充表单数据
-	  document.getElementById('reportId').value = report.id;
-	  document.getElementById('domainId').value = report.domainId;
-	  document.getElementById('reportDate').value = report.startDate;
-	  
-	  // 填充品牌下拉框并选择对应品牌
-	  populateBrandSelect(report.domainId);
-	  document.getElementById('brandId').value = report.brandId;
-	  
-	  // 填充车型下拉框并选择对应车型
-	  populateModelSelect(report.brandId);
-	  document.getElementById('modelId').value = report.modelId;
-	  
-	  // 填充基线下拉框并选择对应基线
-	  populateBaselineSelect(report.modelId);
-	  document.getElementById('baselineId').value = report.baselineId;
-	  
-	  // 生成业务模块
-	  generateBusinessModules();
-	}
+async function loadReportData(reportId) {
+  try {
+    // 从localStorage加载所有报告
+    const allReports = JSON.parse(localStorage.getItem('reports')) || [];
+    const report = allReports.find(r => r.id === reportId);
+    
+    if (!report) {
+      showAlert('报告不存在或已被删除', 'danger');
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 2000);
+      return;
+    }
+    
+    // 检查报告所有者或管理员权限
+    const currentUser = getCurrentUser();
+    if (report.userId !== currentUser.id && !isAdmin()) {
+      showAlert('您没有权限编辑此报告', 'danger');
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 2000);
+      return;
+    }
+    
+    // 更新当前报告对象
+    currentReport = {
+      ...report,
+      content: report.content.map(item => ({
+        moduleId: item.moduleId,
+        workContent: item.workContent || ''
+      }))
+    };
+    
+    // 填充表单数据
+    document.getElementById('reportId').value = report.id;
+    document.getElementById('domainId').value = report.domainId;
+    document.getElementById('reportDate').value = report.startDate;
+    
+    // 填充品牌下拉框并选择对应品牌
+    populateBrandSelect(report.domainId);
+    document.getElementById('brandId').value = report.brandId;
+    
+    // 填充车型下拉框并选择对应车型
+    populateModelSelect(report.brandId);
+    document.getElementById('modelId').value = report.modelId;
+    
+    // 填充基线下拉框并选择对应基线
+    populateBaselineSelect(report.modelId);
+    document.getElementById('baselineId').value = report.baselineId;
+  } catch (error) {
+    console.error('加载报告数据失败:', error);
+    showAlert('加载报告数据失败，请重试', 'danger');
+  }
+}
 
 // 设置事件监听
 function setupEventListeners() {
@@ -536,7 +552,7 @@ function setupDropdownMenus() {
 // 启动自动保存
 function startAutoSave() {
   // 每30秒自动保存一次
-  autoSaveInterval = setInterval(() => {
+  autoSaveInterval = setInterval(async () => {
     // 如果正在保存，跳过
     if (isAutoSaving) return;
     
@@ -551,7 +567,7 @@ function startAutoSave() {
     showAutoSaveIndicator(true);
     
     // 保存报告
-    saveReport('draft', true);
+    await saveReport('draft', true);
   }, 30000); // 30秒
 }
 
@@ -575,65 +591,67 @@ function showAutoSaveIndicator(show) {
 }
 
 // 保存报告
-	function saveReport(status, isAutoSave = false) {
-	  // 如果是自动保存，设置标志
-	  if (isAutoSave) {
-	    isAutoSaving = true;
-	  }
-	  
-	  // 更新报告状态
-	  currentReport.status = status;
-	  
-	  // 获取当前时间
-	  const now = new Date().toISOString();
-	  
-	  // 如果是新报告，设置创建时间
-	  if (!currentReport.id) {
-	    currentReport.id = generateId();
-	    currentReport.createdAt = now;
-	  }
-	  
-	  // 更新最后修改时间
-	  currentReport.updatedAt = now;
-	  
-	  // 获取所有报告
-	  let reports = JSON.parse(localStorage.getItem('reports')) || [];
-	  
-	  // 检查报告是否已存在
-	  const reportIndex = reports.findIndex(r => r.id === currentReport.id);
-	  
-	  if (reportIndex >= 0) {
-	    // 更新现有报告
-	    reports[reportIndex] = currentReport;
-	  } else {
-	    // 添加新报告
-	    reports.push(currentReport);
-	  }
-	  
-	  // 保存报告数据
-	  localStorage.setItem('reports', JSON.stringify(reports));
-	  
-	  // 隐藏自动保存提示
-	  showAutoSaveIndicator(false);
-	  
-	  // 如果是自动保存，重置标志
-	  if (isAutoSave) {
-	    isAutoSaving = false;
-	    return;
-	  }
-	  
-	  // 显示成功提示
-	  if (status === 'draft') {
-	    showAlert('草稿已保存', 'success');
-	  } else {
-	    showAlert('报告已提交', 'success');
-	    
-	    // 2秒后跳转到首页
-	    setTimeout(() => {
-	      window.location.href = 'dashboard.html';
-	    }, 2000);
-	  }
-	}
+async function saveReport(status, isAutoSave = false) {
+  // 如果是自动保存，设置标志
+  if (isAutoSave) {
+    isAutoSaving = true;
+  }
+  
+  // 更新报告状态
+  currentReport.status = status;
+  
+  // 获取当前时间
+  const now = new Date().toISOString();
+  
+  // 如果是新报告，设置创建时间
+  if (!currentReport.id) {
+    currentReport.id = generateId();
+    currentReport.createdAt = now;
+  }
+  
+  // 更新最后修改时间
+  currentReport.updatedAt = now;
+  
+  try {
+    // 保存到localStorage
+    const allReports = JSON.parse(localStorage.getItem('reports')) || [];
+    const reportIndex = allReports.findIndex(r => r.id === currentReport.id);
+    if (reportIndex !== -1) {
+      allReports[reportIndex] = currentReport;
+    } else {
+      allReports.push(currentReport);
+    }
+    localStorage.setItem('reports', JSON.stringify(allReports));
+    
+    // 隐藏自动保存提示
+    showAutoSaveIndicator(false);
+    
+    // 如果是自动保存，重置标志
+    if (isAutoSave) {
+      isAutoSaving = false;
+      return;
+    }
+    
+    // 显示成功提示
+    if (status === 'draft') {
+      showAlert('草稿已保存', 'success');
+    } else {
+      showAlert('报告已提交', 'success');
+      
+      // 2秒后跳转到首页
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 2000);
+    }
+  } catch (error) {
+    console.error('保存报告失败:', error);
+    showAlert('保存报告失败，请重试', 'danger');
+    showAutoSaveIndicator(false);
+    if (isAutoSave) {
+      isAutoSaving = false;
+    }
+  }
+}
 
 // 显示提示消息
 function showAlert(message, type) {
@@ -669,4 +687,30 @@ function formatDate(date) {
 // 数字补零
 function padZero(num) {
   return num < 10 ? `0${num}` : num;
+}
+
+// 自动清理一个月前的数据
+async function cleanupOldData() {
+  try {
+    // 计算一个月前的日期
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    oneMonthAgo.setHours(0, 0, 0, 0);
+    
+    // 从localStorage加载所有报告
+    const allReports = JSON.parse(localStorage.getItem('reports')) || [];
+    
+    // 筛选出需要保留的报告（创建时间在一个月内）
+    const recentReports = allReports.filter(report => {
+      const reportCreatedAt = new Date(report.createdAt);
+      return reportCreatedAt >= oneMonthAgo;
+    });
+    
+    // 保存到localStorage
+    localStorage.setItem('reports', JSON.stringify(recentReports));
+    
+    console.log(`自动清理了 ${allReports.length - recentReports.length} 条一个月前的报告数据`);
+  } catch (error) {
+    console.error('自动清理旧数据失败:', error);
+  }
 }

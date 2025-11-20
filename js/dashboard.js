@@ -53,39 +53,43 @@ function setupNavigationPermissions() {
 }
 
 // 加载统计数据
-function loadStatistics() {
-  // 获取所有周报
-  const reports = JSON.parse(localStorage.getItem('reports')) || [];
-  
-  // 获取所有用户
-  const users = JSON.parse(localStorage.getItem('users')) || [];
-  
-  // 获取当前用户
-  const currentUser = getCurrentUser();
-  
-  // 计算总周报数
-  document.getElementById('totalReports').textContent = reports.length;
-  
-  // 计算活跃用户数（过去30天内有提交周报的用户）
-  const activeUserIds = new Set();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  
-  reports.forEach(report => {
-    if (new Date(report.createdAt) >= thirtyDaysAgo) {
-      activeUserIds.add(report.userId);
-    }
-  });
-  
-  document.getElementById('activeUsers').textContent = activeUserIds.size;
-  
-  // 计算我的周报数
-  const myReports = reports.filter(report => report.userId === currentUser.id);
-  document.getElementById('myReports').textContent = myReports.length;
-  
-  // 计算草稿数
-  const draftReports = reports.filter(report => report.status === 'draft');
-  document.getElementById('draftReports').textContent = draftReports.length;
+async function loadStatistics() {
+  try {
+    // 获取当前用户
+    const currentUser = getCurrentUser();
+    
+    // 获取所有周报（从localStorage）
+    const reports = JSON.parse(localStorage.getItem('reports')) || [];
+    
+    // 获取所有用户（从localStorage）
+    const users = JSON.parse(localStorage.getItem('mockUsers')) || [];
+    
+    // 计算总周报数
+    document.getElementById('totalReports').textContent = reports.length;
+    
+    // 计算活跃用户数（过去30天内有提交周报的用户）
+    const activeUserIds = new Set();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    reports.forEach(report => {
+      if (new Date(report.createdAt) >= thirtyDaysAgo) {
+        activeUserIds.add(report.userId);
+      }
+    });
+    
+    document.getElementById('activeUsers').textContent = activeUserIds.size;
+    
+    // 计算我的周报数
+    const myReports = reports.filter(report => report.userId === currentUser.id);
+    document.getElementById('myReports').textContent = myReports.length;
+    
+    // 计算草稿数
+    const draftReports = reports.filter(report => report.status === 'draft');
+    document.getElementById('draftReports').textContent = draftReports.length;
+  } catch (error) {
+    console.error('加载统计数据失败:', error);
+  }
 }
 
 // 加载最近编辑的周报
@@ -203,13 +207,42 @@ function setupDropdownMenus() {
   });
 }
 
+// 自动清理一个月前的数据
+async function cleanupOldData() {
+  try {
+    // 清理30天前的旧数据
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoString = thirtyDaysAgo.toISOString();
+    
+    // 获取所有周报（从localStorage）
+    let reports = JSON.parse(localStorage.getItem('reports')) || [];
+    
+    // 筛选出需要删除的旧周报
+    const oldReports = reports.filter(report => report.createdAt < thirtyDaysAgoString && report.status === 'submitted');
+    
+    // 从localStorage中删除旧周报
+    reports = reports.filter(report => !(report.createdAt < thirtyDaysAgoString && report.status === 'submitted'));
+    localStorage.setItem('reports', JSON.stringify(reports));
+    
+    console.log(`已清理 ${oldReports.length} 条旧数据`);
+    return oldReports.length;
+  } catch (error) {
+    console.error('清理旧数据失败:', error);
+    return 0;
+  }
+}
+
 // 格式化日期
 function formatDate(dateString) {
   const date = new Date(dateString);
-  return `${date.getFullYear()}-${padZero(date.getMonth() + 1)}-${padZero(date.getDate())}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // 数字补零
 function padZero(num) {
-  return num < 10 ? `0${num}` : num;
+  return String(num).padStart(2, '0');
 }
