@@ -3,34 +3,101 @@
 // 导入依赖
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const PORT = 3000;
 
 // 数据文件路径
 const DATA_DIR = path.join(__dirname, 'data');
-const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
 // 确保数据目录存在
+const fs = require('fs');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR);
 }
 
-// 初始化数据文件
-const initDataFile = (filePath, defaultData) => {
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
+// SQLite数据库设置
+const DB_FILE = path.join(DATA_DIR, 'auto_weekly.db');
+const db = new sqlite3.Database(DB_FILE, (err) => {
+  if (err) {
+    console.error('创建/打开数据库失败:', err.message);
+  } else {
+    console.log('成功连接到SQLite数据库:', DB_FILE);
   }
-};
+});
 
-initDataFile(REPORTS_FILE, []);
-initDataFile(USERS_FILE, []);
-initDataFile(CONFIG_FILE, {});
+// 初始化数据库表结构
+db.serialize(() => {
+  // 创建用户表
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    department TEXT,
+    email TEXT,
+    updatedAt TEXT NOT NULL
+  )`, (err) => {
+    if (err) console.error('创建用户表失败:', err.message);
+  });
+
+  // 创建周报表
+  db.run(`CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    week TEXT NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT DEFAULT 'draft',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  )`, (err) => {
+    if (err) console.error('创建周报表失败:', err.message);
+  });
+
+  // 创建配置表
+  db.run(`CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updatedAt TEXT NOT NULL
+  )`, (err) => {
+    if (err) console.error('创建配置表失败:', err.message);
+    return;
+  });
+
+  // 检查并添加updatedAt列（如果不存在）
+  db.run(`PRAGMA table_info(config)`, (err, columns) => {
+    if (err) {
+      console.error('获取配置表结构失败:', err.message);
+      return;
+    }
+    const hasUpdatedAt = columns.some(col => col.name === 'updatedAt');
+    if (!hasUpdatedAt) {
+      db.run(`ALTER TABLE config ADD COLUMN updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`, (err) => {
+        if (err) console.error('添加updatedAt列失败:', err.message);
+      });
+    }
+  });
+
+  // 从config.json文件导入配置到数据库
+  const configPath = path.join(DATA_DIR, 'config.json');
+  if (fs.existsSync(configPath)) {
+    const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const stmt = db.prepare('INSERT OR REPLACE INTO config (key, value, updatedAt) VALUES (?, ?, ?)');
+    const updatedAt = new Date().toISOString();
+    
+    for (const [key, value] of Object.entries(configData)) {
+      stmt.run([key, JSON.stringify(value), updatedAt], (err) => {
+        if (err) console.error(`导入配置 ${key} 失败:`, err.message);
+      });
+    }
+    
+    stmt.finalize(() => {
+      console.log('配置已从文件导入数据库');
+    });
+  }
+});
 
 // 启用CORS
 app.use(cors());
@@ -52,81 +119,225 @@ app.use((req, res, next) => {
   next();
 });
 
-// 辅助函数：读取数据
-const readData = (filePath) => {
-  const data = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(data);
-};
-
-// 辅助函数：写入数据
-const writeData = (filePath, data) => {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-};
-
 // 用户管理API
-app.get('/api/users', (req, res) => res.json(readData(USERS_FILE)));
+app.get('/api/users', (req, res) => {
+  db.all('SELECT * FROM users', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
+  });
+});
+
 app.get('/api/users/:id', (req, res) => {
-  const user = readData(USERS_FILE).find(u => u.id === req.params.id);
-  user ? res.json(user) : res.status(404).json({ error: '用户不存在' });
+  const { id } = req.params;
+  db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else if (!row) {
+      res.status(404).json({ error: '用户不存在' });
+    } else {
+      res.json(row);
+    }
+  });
 });
+
 app.post('/api/users', (req, res) => {
-  const users = readData(USERS_FILE);
-  users.push(req.body);
-  writeData(USERS_FILE, users);
-  res.status(201).json(req.body);
+  const { id, name, department, email } = req.body;
+  const updatedAt = req.body.updatedAt || new Date().toISOString();
+  db.run('INSERT OR REPLACE INTO users (id, name, department, email, updatedAt) VALUES (?, ?, ?, ?, ?)',
+    [id, name, department, email, updatedAt],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.status(201).json({ id, name, department, email, updatedAt });
+      }
+    });
 });
+
 app.put('/api/users/:id', (req, res) => {
-  const users = readData(USERS_FILE);
-  const index = users.findIndex(u => u.id === req.params.id);
-  if (index !== -1) {
-    users[index] = { ...users[index], ...req.body };
-    writeData(USERS_FILE, users);
-    res.json(users[index]);
-  } else {
-    res.status(404).json({ error: '用户不存在' });
-  }
+  const { id } = req.params;
+  const { name, department, email } = req.body;
+  const updatedAt = new Date().toISOString();
+  db.run('UPDATE users SET name = ?, department = ?, email = ?, updatedAt = ? WHERE id = ?',
+    [name, department, email, updatedAt, id],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+          } else if (!row) {
+            res.status(404).json({ error: '用户不存在' });
+          } else {
+            res.json(row);
+          }
+        });
+      }
+    });
 });
+
 app.delete('/api/users/:id', (req, res) => {
-  const users = readData(USERS_FILE).filter(u => u.id !== req.params.id);
-  writeData(USERS_FILE, users);
-  res.json({ message: '用户删除成功' });
+  const { id } = req.params;
+  db.run('DELETE FROM users WHERE id = ?', [id], (err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ message: '用户删除成功' });
+    }
+  });
 });
 
 // 周报管理API
-app.get('/api/reports', (req, res) => res.json(readData(REPORTS_FILE)));
+app.get('/api/reports', (req, res) => {
+  db.all('SELECT * FROM reports', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
+  });
+});
+
 app.get('/api/reports/:id', (req, res) => {
-  const report = readData(REPORTS_FILE).find(r => r.id === req.params.id);
-  report ? res.json(report) : res.status(404).json({ error: '周报不存在' });
+  const { id } = req.params;
+  db.get('SELECT * FROM reports WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else if (!row) {
+      res.status(404).json({ error: '周报不存在' });
+    } else {
+      res.json(row);
+    }
+  });
 });
+
 app.post('/api/reports', (req, res) => {
-  const reports = readData(REPORTS_FILE);
-  reports.push(req.body);
-  writeData(REPORTS_FILE, reports);
-  res.status(201).json(req.body);
+  const { id, userId, week, content, status, createdAt, updatedAt } = req.body;
+  db.run('INSERT OR REPLACE INTO reports (id, userId, week, content, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, userId, week, content, status || 'draft', createdAt, updatedAt],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.status(201).json(req.body);
+      }
+    });
 });
+
 app.put('/api/reports/:id', (req, res) => {
-  const reports = readData(REPORTS_FILE);
-  const index = reports.findIndex(r => r.id === req.params.id);
-  if (index !== -1) {
-    reports[index] = { ...reports[index], ...req.body };
-    writeData(REPORTS_FILE, reports);
-    res.json(reports[index]);
-  } else {
-    res.status(404).json({ error: '周报不存在' });
-  }
+  const { id } = req.params;
+  const { userId, week, content, status, createdAt, updatedAt } = req.body;
+  db.run('UPDATE reports SET userId = ?, week = ?, content = ?, status = ?, createdAt = ?, updatedAt = ? WHERE id = ?',
+    [userId, week, content, status, createdAt, updatedAt, id],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        db.get('SELECT * FROM reports WHERE id = ?', [id], (err, row) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+          } else if (!row) {
+            res.status(404).json({ error: '周报不存在' });
+          } else {
+            res.json(row);
+          }
+        });
+      }
+    });
 });
+
 app.delete('/api/reports/:id', (req, res) => {
-  const reports = readData(REPORTS_FILE).filter(r => r.id !== req.params.id);
-  writeData(REPORTS_FILE, reports);
-  res.json({ message: '周报删除成功' });
+  const { id } = req.params;
+  db.run('DELETE FROM reports WHERE id = ?', [id], (err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ message: '周报删除成功' });
+    }
+  });
 });
 
 // 配置管理API
-app.get('/api/config', (req, res) => res.json({ test: 'Hello World' }));
+app.get('/api/config', (req, res) => {
+  db.all('SELECT * FROM config', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+
+    const config = {};
+    let updatedAt = null;
+
+    rows.forEach(row => {
+      try {
+        config[row.key] = JSON.parse(row.value);
+      } catch (parseError) {
+        config[row.key] = row.value;
+      }
+      
+      // 获取配置的更新时间
+      if (!updatedAt) {
+        updatedAt = row.updatedAt;
+      } else if (new Date(row.updatedAt) > new Date(updatedAt)) {
+        updatedAt = row.updatedAt;
+      }
+    });
+
+    // 将更新时间添加到配置对象
+    if (updatedAt) {
+      config.updatedAt = updatedAt;
+    }
+
+    res.json(config);
+  });
+});
+
 app.put('/api/config', (req, res) => {
-  const config = { ...readData(CONFIG_FILE), ...req.body };
-  writeData(CONFIG_FILE, config);
-  res.json(config);
+  // 清空现有配置
+  db.run('DELETE FROM config', (err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+
+    // 插入新配置
+    const config = req.body;
+    const updatedAt = new Date().toISOString(); // 使用当前时间作为更新时间
+
+    // 创建插入Promise数组
+    const insertPromises = Object.entries(config)
+      .filter(([key]) => key !== 'updatedAt') // 跳过top-level的updatedAt字段
+      .map(([key, value]) => {
+        return new Promise((resolve, reject) => {
+          db.run(
+            'INSERT INTO config (key, value, updatedAt) VALUES (?, ?, ?)',
+            [key, JSON.stringify(value), updatedAt],
+            (err) => {
+              if (err) { 
+                reject(new Error(`插入配置项 ${key} 失败: ${err.message}`));
+              } else {
+                resolve();
+              }
+            }
+          );
+        });
+      });
+
+    // 等待所有插入完成
+    Promise.all(insertPromises)
+      .then(() => {
+        // 将更新时间添加到返回的配置对象中
+        const configWithTimestamp = { ...config, updatedAt };
+        res.json(configWithTimestamp);
+      })
+      .catch((error) => {
+        res.status(500).json({ error: error.message });
+      });
+  });
 });
 
 // 启动服务器

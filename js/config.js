@@ -160,11 +160,17 @@ async function loadConfigData() {
   try {
     const configData = JSON.parse(localStorage.getItem('config')) || {};
     
+    // 设置默认配置结构，确保包含所有配置类型
     config.domains = configData.domains || [];
     config.brands = configData.brands || [];
     config.models = configData.models || [];
     config.baselines = configData.baselines || [];
     config.businessModules = configData.businessModules || [];
+    // 加载top-level的updatedAt字段
+    config.updatedAt = configData.updatedAt || new Date().toISOString();
+    
+    // 保存完整的配置到localStorage
+    saveConfigData();
   } catch (error) {
     console.error('加载配置数据失败:', error);
   }

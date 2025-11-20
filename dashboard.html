@@ -17,7 +17,11 @@
       </div>
       <div class="user-info">
         <span id="userName">欢迎，用户</span>
-        <button id="logoutBtn" class="btn btn-sm btn-accent">退出登录</button>
+        <div class="header-actions">
+          <button id="syncToCloudBtn" class="btn btn-sm btn-primary mr-2">上传到云端</button>
+          <button id="syncFromCloudBtn" class="btn btn-sm btn-primary mr-2">从云端下载</button>
+          <button id="logoutBtn" class="btn btn-sm btn-accent">退出登录</button>
+        </div>
       </div>
     </div>
   </header>
@@ -124,6 +128,7 @@
   </main>
 
   <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/dashboard.js"></script>
 </body>
 </html>

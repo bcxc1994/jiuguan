@@ -45,27 +45,60 @@ window.ConfigAPI = {
   updateConfig: (config) => apiRequest('/config', 'PUT', config),
 };
 
-// 数据同步功能
+// 数据同步功能 - 上传到云端
 window.syncToCloud = async () => {
   try {
-    // 从localStorage获取数据
-    const reports = JSON.parse(localStorage.getItem('reports') || '[]');
-    const users = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    const config = JSON.parse(localStorage.getItem('config') || '{}');
+    // 从localStorage获取本地数据
+    const localReports = JSON.parse(localStorage.getItem('reports') || '[]');
+    const localUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
+    const localConfig = JSON.parse(localStorage.getItem('config') || '{}');
 
-    // 同步到云端
-    await Promise.all([
-      // 清空云端现有数据（可选，根据需求调整）
-      // ...
-      // 上传新数据
-      ...reports.map(report => window.ReportAPI.createReport(report)),
-      ...users.map(user => window.UserAPI.createUser(user)),
-      window.ConfigAPI.updateConfig(config),
+    // 从云端获取最新数据
+    const [cloudReports, cloudUsers, cloudConfig] = await Promise.all([
+      window.ReportAPI.getAllReports(),
+      window.UserAPI.getAllUsers(),
+      window.ConfigAPI.getConfig(),
     ]);
 
-    return { success: true, message: '数据同步成功' };
+    // 将云端数据转换为ID映射，便于比较
+    const cloudReportsMap = new Map(cloudReports.map(r => [r.id, r]));
+    const cloudUsersMap = new Map(cloudUsers.map(u => [u.id, u]));
+
+    // 准备需要上传的报告
+    const reportsToUpload = localReports.filter(localReport => {
+      const cloudReport = cloudReportsMap.get(localReport.id);
+      // 如果云端没有这个报告，或者本地报告更新时间更晚，则需要上传
+      return !cloudReport || new Date(localReport.updatedAt) > new Date(cloudReport.updatedAt);
+    });
+
+    // 准备需要上传的用户
+    const usersToUpload = localUsers.filter(localUser => {
+      const cloudUser = cloudUsersMap.get(localUser.id);
+      // 如果云端没有这个用户，或者本地用户更新时间更晚，则需要上传
+      return !cloudUser || new Date(localUser.updatedAt) > new Date(cloudUser.updatedAt);
+    });
+
+    // 准备需要上传的配置
+    const configToUpload = localConfig;
+    const uploadConfig = cloudConfig.updatedAt ? new Date(localConfig.updatedAt) > new Date(cloudConfig.updatedAt) : true;
+
+    // 执行上传
+    const uploadPromises = [
+      ...reportsToUpload.map(report => window.ReportAPI.createReport(report)),
+      ...usersToUpload.map(user => window.UserAPI.createUser(user))
+    ];
+
+    if (uploadConfig) {
+      uploadPromises.push(window.ConfigAPI.updateConfig(configToUpload));
+    }
+
+    await Promise.all(uploadPromises);
+
+    // 计算上传的记录总数
+    const total = reportsToUpload.length + usersToUpload.length + (uploadConfig ? 1 : 0);
+    return { success: true, message: '数据上传成功', total };
   } catch (error) {
-    return { success: false, message: `数据同步失败: ${error.message}` };
+    return { success: false, message: `数据上传失败: ${error.message}` };
   }
 };
 
